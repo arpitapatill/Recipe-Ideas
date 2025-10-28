@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickCook Helper</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: 
+                linear-gradient(135deg, rgba(255, 234, 167, 0.8) 0%, rgba(250, 177, 160, 0.8) 100%),
+                url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80') no-repeat center center fixed;
+            background-size: cover;
+            background-blend-mode: overlay;
+            color: #2d3436; /* Dark text for contrast */
+            min-height: 100vh; /* Full height for better visual */
+        }
+        input, button { 
+            margin: 10px 0; 
+            padding: 10px; 
+            width: 100%; 
+            border-radius: 5px; /* Slight rounding for aesthetics */
+            border: 1px solid #ddd;
+        }
+        button {
+            background-color: #e17055; /* Accent color */
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s; /* Smooth hover */
+        }
+        button:hover {
+            background-color: #d63031; /* Darker on hover */
+        }
+        .meal { 
+            border: 1px solid #ccc; 
+            padding: 10px; 
+            margin: 10px 0; 
+            background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white for contrast */
+            border-radius: 10px; /* Rounded corners */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+        }
+        .filters { 
+            display: flex; 
+            flex-wrap: wrap; 
+            background-color: rgba(255, 255, 255, 0.8); /* Light background for filters */
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        .filter { 
+            margin: 5px; 
+        }
+        h1 {
+            color: #e17055; /* Accent color for header */
+            text-align: center;
+        }
+        p {
+            text-align: center;
+            color: #636e72;
+        }
+        .section {
+            margin: 20px 0;
+        }
+        .section h2 {
+            color: #e17055;
+            border-bottom: 2px solid #e17055;
+            padding-bottom: 5px;
+        }
+        .link {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .link a {
+            color: #e17055;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .link a:hover {
+            text-decoration: underline;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                background-attachment: scroll; /* Better performance on mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>QuickCook Helper for Taylor</h1>
+    <p>Enter ingredients (comma-separated), set filters, and get recipe ideas!</p>
+    
+    <input type="text" id="ingredients" placeholder="e.g., chicken, rice">
+    
+    <div class="filters">
+        <label class="filter"><input type="checkbox" id="quick"> Under 30 mins</label>
+        <label class="filter"><input type="checkbox" id="healthy"> Healthy</label>
+        <label class="filter"><input type="checkbox" id="veg"> Vegetarian</label>
+        <label class="filter"><input type="checkbox" id="noDairy"> No Dairy</label>
+        <!-- Add more filters as needed -->
+    </div>
+    
+    <button onclick="searchMeals()">Search Recipes</button>
+    <button onclick="randomMeal()">Random Suggestions (Variety)</button>
+    
+    <div id="results"></div>
+    
+    <div class="link">
+        <p>For more varieties and full recipes, explore: <a href="https://www.themealdb.com/" target="_blank">TheMealDB Website</a></p>
+    </div>
+
+    <script>
+        async function searchMeals() {
+            const ingredients = document.getElementById('ingredients').value.split(',').map(i => i.trim());
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = 'Loading...';
+            
+            let allMeals = [];
+            for (const ing of ingredients) {
+                if (ing) {
+                    const response = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${ing}`);
+                    const data = await response.json();
+                    if (data.meals) allMeals = allMeals.concat(data.meals);
+                }
+            }
+            
+            // Remove duplicates
+            const uniqueMeals = allMeals.filter((meal, index, self) => 
+                index === self.findIndex(m => m.idMeal === meal.idMeal)
+            );
+            
+            // Fetch full details for accurate filtering
+            let vegMeals = [];
+            let nonVegMeals = [];
+            for (const meal of uniqueMeals) {
+                const response = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${meal.idMeal}`);
+                const data = await response.json();
+                const fullMeal = data.meals[0];
+                
+                let include = true;
+                
+                // Healthy filter: Check if 'Healthy' is in strTags
+                if (document.getElementById('healthy').checked) {
+                    include = include && (fullMeal.strTags && fullMeal.strTags.toLowerCase().includes('healthy'));
+                }
+                
+                // No Dairy filter: Check ingredients for common dairy items (basic check)
+                if (document.getElementById('noDairy').checked) {
+                    const ingredientsList = Object.keys(fullMeal).filter(k => k.startsWith('strIngredient') && fullMeal[k]).map(k => fullMeal[k].toLowerCase());
+                    const dairyItems = ['milk', 'cheese', 'butter', 'cream', 'yogurt'];
+                    include = include && !ingredientsList.some(ing => dairyItems.some(dairy => ing.includes(dairy)));
+                }
+                
+                // Quick filter: Estimate time from instructions length (rough heuristic: shorter instructions = quicker)
+                if (document.getElementById('quick').checked) {
+                    const instructionsLength = fullMeal.strInstructions ? fullMeal.strInstructions.length : 0;
+                    include = include && (instructionsLength < 1000); // Arbitrary threshold; adjust as needed
+                }
+                
+                if (include) {
+                    if (fullMeal.strTags && fullMeal.strTags.toLowerCase().includes('vegetarian')) {
+                        vegMeals.push(fullMeal);
+                    } else {
+                        nonVegMeals.push(fullMeal);
+                    }
+                }
+            }
+            
+            displayMeals(vegMeals, nonVegMeals);
+        }
+        
+        async function randomMeal() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = 'Loading random suggestions...';
+            
+            let vegMeals = [];
+            let nonVegMeals = [];
+            // Fetch 10 random meals and categorize
+            for (let i = 0; i < 10; i++) {
+                const response = await fetch('https://www.themealdb.com/api/json/v1/1/random.php');
+                const data = await response.json();
+                if (data.meals) {
+                    const meal = data.meals[0];
+                    if (meal.strTags && meal.strTags.toLowerCase().includes('vegetarian')) {
+                        vegMeals.push(meal);
+                    } else {
+                        nonVegMeals.push(meal);
+                    }
+                }
+            }
+            
+            displayMeals(vegMeals, nonVegMeals);
+        }
+        
+        function displayMeals(vegMeals, nonVegMeals) {
+            const resultsDiv = document.getElementById('results');
+            let html = '';
+            
+            if (vegMeals.length > 0) {
+                html += '<div class="section"><h2>Vegetarian Options</h2>';
+                html += vegMeals.map(meal => `
+                    <div class="meal">
+                        <img src="${meal.strMealThumb}" alt="${meal.strMeal}" width="100">
+                        <h3>${meal.strMeal}</h3>
+                        <p>Category: ${meal.strCategory}</p>
+                        <button onclick="viewRecipe(${meal.idMeal})">View Full Recipe</button>
+                    </div>
+                `).join('');
+                html += '</div>';
+            }
+            
+            if (nonVegMeals.length > 0) {
+                html += '<div class="section"><h2>Non-Vegetarian Options</h2>';
+                html += nonVegMeals.map(meal => `
+                    <div class="meal">
+                        <img src="${meal.strMealThumb}" alt="${meal.strMeal}" width="100">
+                        <h3>${meal.strMeal}</h3>
+                        <p>Category: ${meal.strCategory}</p>
+                        <button onclick="viewRecipe(${meal.idMeal})">View Full Recipe</button>
+                    </div>
+                `).join('');
+                html += '</div>';
+            }
+            
+            if (html === '') {
+                html = 'No meals found. Try different ingredients or adjust filters!';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        async function viewRecipe(id) {
+            const response = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${id}`);
+            const data = await response.json();
+            const meal = data.meals[0];
+            alert(`Recipe: ${meal.strMeal}\n\nIngredients: ${Object.keys(meal).filter(k => k.startsWith('strIngredient') && meal[k]).map(k => meal[k]).join(', ')}\n\nInstructions: ${meal.strInstructions}\n\nVideo: ${meal.strYoutube || 'N/A'}`);
+            // In a real app, open a modal or new page for this
+        }
+    </script>
+</body>
+</html>
